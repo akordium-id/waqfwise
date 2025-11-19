@@ -1,0 +1,193 @@
+# Makefile for WaqfWise Monolith
+.PHONY: help build run test clean docker-build docker-up docker-down deploy
+
+# Colors
+COLOR_RESET := \033[0m
+COLOR_BOLD := \033[1m
+COLOR_GREEN := \033[32m
+COLOR_YELLOW := \033[33m
+COLOR_BLUE := \033[34m
+
+# Variables
+APP_NAME := waqfwise
+BINARY_NAME := waqfwise
+DOCKER_IMAGE := waqfwise/monolith
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
+GO := go
+GOFLAGS := -v
+
+help: ## Show this help message
+	@echo "$(COLOR_BOLD)WaqfWise Monolith - Build & Deploy$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BLUE)Available commands:$(COLOR_RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_GREEN)%-20s$(COLOR_RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(COLOR_YELLOW)Version:$(COLOR_RESET) $(VERSION)"
+	@echo "$(COLOR_YELLOW)Binary:$(COLOR_RESET)  $(BINARY_NAME)"
+
+deps: ## Download Go dependencies
+	@echo "$(COLOR_BLUE)Downloading dependencies...$(COLOR_RESET)"
+	$(GO) mod download
+	$(GO) mod tidy
+	@echo "$(COLOR_GREEN)✓ Dependencies downloaded$(COLOR_RESET)"
+
+build: deps ## Build the monolith binary
+	@echo "$(COLOR_BLUE)Building $(BINARY_NAME)...$(COLOR_RESET)"
+	@mkdir -p bin
+	CGO_ENABLED=0 $(GO) build $(GOFLAGS) \
+		-ldflags="-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)" \
+		-o bin/$(BINARY_NAME) \
+		./cmd/waqfwise-monolith
+	@echo "$(COLOR_GREEN)✓ Build complete: bin/$(BINARY_NAME)$(COLOR_RESET)"
+
+build-optimized: deps ## Build optimized binary for production
+	@echo "$(COLOR_BLUE)Building optimized binary...$(COLOR_RESET)"
+	@mkdir -p bin
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build \
+		-ldflags="-w -s -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)" \
+		-a -installsuffix cgo \
+		-o bin/$(BINARY_NAME) \
+		./cmd/waqfwise-monolith
+	@echo "$(COLOR_GREEN)✓ Optimized build complete$(COLOR_RESET)"
+	@ls -lh bin/$(BINARY_NAME)
+
+run: build ## Build and run the application locally
+	@echo "$(COLOR_BLUE)Starting $(APP_NAME)...$(COLOR_RESET)"
+	./bin/$(BINARY_NAME)
+
+run-dev: ## Run with live reload (requires 'air')
+	@echo "$(COLOR_BLUE)Starting development server with live reload...$(COLOR_RESET)"
+	@if command -v air > /dev/null; then \
+		air; \
+	else \
+		echo "$(COLOR_YELLOW)Installing 'air' for live reload...$(COLOR_RESET)"; \
+		go install github.com/cosmtrek/air@latest; \
+		air; \
+	fi
+
+test: ## Run tests
+	@echo "$(COLOR_BLUE)Running tests...$(COLOR_RESET)"
+	$(GO) test -v -race -coverprofile=coverage.out ./...
+	@echo "$(COLOR_GREEN)✓ Tests passed$(COLOR_RESET)"
+
+test-coverage: test ## Generate test coverage report
+	@echo "$(COLOR_BLUE)Generating coverage report...$(COLOR_RESET)"
+	$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "$(COLOR_GREEN)✓ Coverage report: coverage.html$(COLOR_RESET)"
+
+lint: ## Run linter
+	@echo "$(COLOR_BLUE)Running linter...$(COLOR_RESET)"
+	@if command -v golangci-lint > /dev/null; then \
+		golangci-lint run ./...; \
+	else \
+		echo "$(COLOR_YELLOW)golangci-lint not installed$(COLOR_RESET)"; \
+		echo "Install: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin"; \
+	fi
+
+clean: ## Clean build artifacts
+	@echo "$(COLOR_BLUE)Cleaning...$(COLOR_RESET)"
+	rm -rf bin/
+	rm -f coverage.out coverage.html
+	$(GO) clean
+	@echo "$(COLOR_GREEN)✓ Cleaned$(COLOR_RESET)"
+
+docker-build: ## Build Docker image
+	@echo "$(COLOR_BLUE)Building Docker image...$(COLOR_RESET)"
+	docker build -f Dockerfile.monolith -t $(DOCKER_IMAGE):$(VERSION) -t $(DOCKER_IMAGE):latest .
+	@echo "$(COLOR_GREEN)✓ Docker image built: $(DOCKER_IMAGE):$(VERSION)$(COLOR_RESET)"
+
+docker-up: ## Start application with Docker Compose
+	@echo "$(COLOR_BLUE)Starting services with Docker Compose...$(COLOR_RESET)"
+	docker-compose -f docker-compose.monolith.yml up -d
+	@echo "$(COLOR_GREEN)✓ Services started$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_YELLOW)Available services:$(COLOR_RESET)"
+	@echo "  App:        http://localhost:8080"
+	@echo "  Health:     http://localhost:8080/health"
+	@echo "  Metrics:    http://localhost:8080/metrics"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo "  Grafana:    http://localhost:3000 (admin/admin)"
+	@echo ""
+	@echo "$(COLOR_BLUE)View logs:$(COLOR_RESET) make docker-logs"
+
+docker-down: ## Stop Docker Compose services
+	@echo "$(COLOR_BLUE)Stopping services...$(COLOR_RESET)"
+	docker-compose -f docker-compose.monolith.yml down
+	@echo "$(COLOR_GREEN)✓ Services stopped$(COLOR_RESET)"
+
+docker-logs: ## View Docker Compose logs
+	docker-compose -f docker-compose.monolith.yml logs -f
+
+docker-ps: ## Show running containers
+	@echo "$(COLOR_BLUE)Running containers:$(COLOR_RESET)"
+	docker-compose -f docker-compose.monolith.yml ps
+
+docker-restart: ## Restart all services
+	@echo "$(COLOR_BLUE)Restarting services...$(COLOR_RESET)"
+	docker-compose -f docker-compose.monolith.yml restart
+	@echo "$(COLOR_GREEN)✓ Services restarted$(COLOR_RESET)"
+
+docker-clean: docker-down ## Stop and remove all containers, networks, and volumes
+	@echo "$(COLOR_BLUE)Cleaning Docker resources...$(COLOR_RESET)"
+	docker-compose -f docker-compose.monolith.yml down -v --remove-orphans
+	docker rmi $(DOCKER_IMAGE):latest $(DOCKER_IMAGE):$(VERSION) 2>/dev/null || true
+	@echo "$(COLOR_GREEN)✓ Docker resources cleaned$(COLOR_RESET)"
+
+health-check: ## Check application health
+	@echo "$(COLOR_BLUE)Checking application health...$(COLOR_RESET)"
+	@curl -s http://localhost:8080/health | jq || echo "Service not available"
+
+db-migrate: ## Run database migrations
+	@echo "$(COLOR_BLUE)Running database migrations...$(COLOR_RESET)"
+	@# Add your migration tool here (e.g., migrate, goose)
+	@echo "$(COLOR_YELLOW)TODO: Implement migrations$(COLOR_RESET)"
+
+db-seed: ## Seed database with sample data
+	@echo "$(COLOR_BLUE)Seeding database...$(COLOR_RESET)"
+	@# Add your seed script here
+	@echo "$(COLOR_YELLOW)TODO: Implement database seeding$(COLOR_RESET)"
+
+# Production deployment targets
+deploy-staging: ## Deploy to staging environment
+	@echo "$(COLOR_BLUE)Deploying to staging...$(COLOR_RESET)"
+	@# Add your deployment script
+	@echo "$(COLOR_YELLOW)TODO: Implement staging deployment$(COLOR_RESET)"
+
+deploy-production: ## Deploy to production environment
+	@echo "$(COLOR_BLUE)Deploying to production...$(COLOR_RESET)"
+	@# Add your deployment script
+	@echo "$(COLOR_YELLOW)TODO: Implement production deployment$(COLOR_RESET)"
+
+# VPS deployment
+deploy-vps: build-optimized ## Deploy to VPS (requires SSH access)
+	@echo "$(COLOR_BLUE)Deploying to VPS...$(COLOR_RESET)"
+	@if [ -z "$(VPS_HOST)" ]; then \
+		echo "$(COLOR_YELLOW)Error: VPS_HOST not set$(COLOR_RESET)"; \
+		echo "Usage: make deploy-vps VPS_HOST=user@your-server.com"; \
+		exit 1; \
+	fi
+	@echo "Copying binary to $(VPS_HOST)..."
+	scp bin/$(BINARY_NAME) $(VPS_HOST):/tmp/
+	ssh $(VPS_HOST) 'sudo systemctl stop waqfwise && sudo mv /tmp/$(BINARY_NAME) /usr/local/bin/ && sudo systemctl start waqfwise'
+	@echo "$(COLOR_GREEN)✓ Deployed to VPS$(COLOR_RESET)"
+
+install-systemd: ## Install systemd service file
+	@echo "$(COLOR_BLUE)Installing systemd service...$(COLOR_RESET)"
+	sudo cp deployments/systemd/waqfwise.service /etc/systemd/system/
+	sudo systemctl daemon-reload
+	sudo systemctl enable waqfwise
+	@echo "$(COLOR_GREEN)✓ Systemd service installed$(COLOR_RESET)"
+	@echo "Start with: sudo systemctl start waqfwise"
+
+benchmark: ## Run benchmarks
+	@echo "$(COLOR_BLUE)Running benchmarks...$(COLOR_RESET)"
+	$(GO) test -bench=. -benchmem ./...
+
+version: ## Show version
+	@echo "$(COLOR_BOLD)WaqfWise Monolith$(COLOR_RESET)"
+	@echo "Version:    $(VERSION)"
+	@echo "Build Time: $(BUILD_TIME)"
+	@echo "Go Version: $(shell go version)"
+
+.DEFAULT_GOAL := help

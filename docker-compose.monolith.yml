@@ -1,0 +1,140 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgis/postgis:15-3.3-alpine
+    container_name: waqfwise-postgres
+    environment:
+      POSTGRES_USER: waqfwise
+      POSTGRES_PASSWORD: waqfwise
+      POSTGRES_DB: waqfwise_community
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - waqfwise-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waqfwise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: waqfwise-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - waqfwise-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  # WaqfWise Monolith Application
+  waqfwise:
+    build:
+      context: .
+      dockerfile: Dockerfile.monolith
+    container_name: waqfwise-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Application
+      PORT: 8080
+      ENVIRONMENT: production
+
+      # Database
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_community?sslmode=disable
+
+      # Redis
+      REDIS_URL: redis:6379
+
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
+
+      # Payment Gateways
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY}
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY}
+
+      # Optional
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: waqfwise-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.monolith.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - waqfwise-network
+    restart: unless-stopped
+
+  # Grafana - Metrics Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: waqfwise-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployments/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deployments/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - waqfwise-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  waqfwise-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
