@@ -55,5 +55,5 @@ We welcome contributions to the Community Edition! Please read `docs/contributin
 
 ## License
 
-- Community Edition: AGPL v3 (see LICENSE-AGPL-v3.txt)
-- Enterprise Edition: Commercial License (see LICENSE-COMMERCIAL.txt)
+- Community Edition: AGPL v3 (see [LICENSE-AGPL-v3](LICENSE-AGPL-v3))
+- Enterprise Edition: Commercial License (see [LICENSE-COMMERCIAL](LICENSE-COMMERCIAL))
