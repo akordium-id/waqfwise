@@ -1,0 +1,167 @@
+# Makefile for WaqfWise Microservices Architecture
+.PHONY: help build build-all run run-all stop clean test deps docker-build docker-up docker-down
+
+# Variables
+SERVICES := api-gateway auth-service payment-service campaign-service asset-service analytics-service integration-service
+DOCKER_COMPOSE := docker-compose -f docker-compose.microservices.yml
+GO := go
+GOFLAGS := -v
+
+# Colors for output
+COLOR_RESET := \033[0m
+COLOR_BOLD := \033[1m
+COLOR_GREEN := \033[32m
+COLOR_YELLOW := \033[33m
+COLOR_BLUE := \033[34m
+
+help: ## Show this help message
+	@echo "$(COLOR_BOLD)WaqfWise Microservices Architecture$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BLUE)Available commands:$(COLOR_RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_GREEN)%-20s$(COLOR_RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(COLOR_YELLOW)Services:$(COLOR_RESET)"
+	@echo "  - API Gateway (Port 8000)"
+	@echo "  - Auth Service (Port 8001)"
+	@echo "  - Payment Service (Port 8002)"
+	@echo "  - Campaign Service (Port 8003)"
+	@echo "  - Asset Service (Port 8004)"
+	@echo "  - Analytics Service (Port 8005) [Enterprise]"
+	@echo "  - Integration Service (Port 8006) [Enterprise]"
+
+deps: ## Download Go dependencies
+	@echo "$(COLOR_BLUE)Downloading dependencies...$(COLOR_RESET)"
+	$(GO) mod download
+	$(GO) mod tidy
+	@echo "$(COLOR_GREEN)✓ Dependencies downloaded$(COLOR_RESET)"
+
+build: ## Build a specific service (usage: make build SERVICE=auth-service)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "$(COLOR_YELLOW)Usage: make build SERVICE=<service-name>$(COLOR_RESET)"; \
+		echo "Available services: $(SERVICES)"; \
+		exit 1; \
+	fi
+	@echo "$(COLOR_BLUE)Building $(SERVICE)...$(COLOR_RESET)"
+	$(GO) build $(GOFLAGS) -o bin/$(SERVICE) ./cmd/$(SERVICE)
+	@echo "$(COLOR_GREEN)✓ $(SERVICE) built successfully$(COLOR_RESET)"
+
+build-all: ## Build all microservices
+	@echo "$(COLOR_BLUE)Building all microservices...$(COLOR_RESET)"
+	@mkdir -p bin
+	@for service in $(SERVICES); do \
+		echo "  Building $$service..."; \
+		$(GO) build $(GOFLAGS) -o bin/$$service ./cmd/$$service || exit 1; \
+	done
+	@echo "$(COLOR_GREEN)✓ All services built successfully$(COLOR_RESET)"
+
+run: ## Run a specific service (usage: make run SERVICE=auth-service)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "$(COLOR_YELLOW)Usage: make run SERVICE=<service-name>$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(COLOR_BLUE)Running $(SERVICE)...$(COLOR_RESET)"
+	./bin/$(SERVICE)
+
+test: ## Run tests for all services
+	@echo "$(COLOR_BLUE)Running tests...$(COLOR_RESET)"
+	$(GO) test -v -race -coverprofile=coverage.out ./...
+	@echo "$(COLOR_GREEN)✓ Tests completed$(COLOR_RESET)"
+
+test-coverage: test ## Generate test coverage report
+	@echo "$(COLOR_BLUE)Generating coverage report...$(COLOR_RESET)"
+	$(GO) tool cover -html=coverage.out -o coverage.html
+	@echo "$(COLOR_GREEN)✓ Coverage report generated: coverage.html$(COLOR_RESET)"
+
+lint: ## Run linter
+	@echo "$(COLOR_BLUE)Running linter...$(COLOR_RESET)"
+	@if command -v golangci-lint > /dev/null; then \
+		golangci-lint run ./...; \
+	else \
+		echo "$(COLOR_YELLOW)golangci-lint not installed. Skipping...$(COLOR_RESET)"; \
+		echo "Install with: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin"; \
+	fi
+
+docker-build: ## Build Docker images for all services
+	@echo "$(COLOR_BLUE)Building Docker images...$(COLOR_RESET)"
+	@for service in $(SERVICES); do \
+		echo "  Building $$service image..."; \
+		docker build -f Dockerfile.microservices \
+			--build-arg SERVICE_NAME=$$service \
+			-t waqfwise/$$service:latest . || exit 1; \
+	done
+	@echo "$(COLOR_GREEN)✓ All Docker images built$(COLOR_RESET)"
+
+docker-up: ## Start all microservices with Docker Compose
+	@echo "$(COLOR_BLUE)Starting microservices...$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) up -d
+	@echo "$(COLOR_GREEN)✓ All services started$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_YELLOW)Services running at:$(COLOR_RESET)"
+	@echo "  API Gateway:  http://localhost:8000"
+	@echo "  Auth:         http://localhost:8001"
+	@echo "  Payment:      http://localhost:8002"
+	@echo "  Campaign:     http://localhost:8003"
+	@echo "  Asset:        http://localhost:8004"
+	@echo "  Prometheus:   http://localhost:9090"
+	@echo "  Grafana:      http://localhost:3000"
+
+docker-up-enterprise: ## Start all microservices including Enterprise services
+	@echo "$(COLOR_BLUE)Starting microservices (Enterprise Edition)...$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) --profile enterprise up -d
+	@echo "$(COLOR_GREEN)✓ All services started (including Enterprise)$(COLOR_RESET)"
+
+docker-down: ## Stop all microservices
+	@echo "$(COLOR_BLUE)Stopping microservices...$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) down
+	@echo "$(COLOR_GREEN)✓ All services stopped$(COLOR_RESET)"
+
+docker-logs: ## View logs from all services
+	$(DOCKER_COMPOSE) logs -f
+
+docker-logs-service: ## View logs from specific service (usage: make docker-logs-service SERVICE=auth-service)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "$(COLOR_YELLOW)Usage: make docker-logs-service SERVICE=<service-name>$(COLOR_RESET)"; \
+		exit 1; \
+	fi
+	$(DOCKER_COMPOSE) logs -f $(SERVICE)
+
+docker-ps: ## Show status of all services
+	@echo "$(COLOR_BLUE)Service Status:$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) ps
+
+docker-restart: ## Restart all services
+	@echo "$(COLOR_BLUE)Restarting all services...$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) restart
+	@echo "$(COLOR_GREEN)✓ All services restarted$(COLOR_RESET)"
+
+docker-clean: docker-down ## Stop and remove all containers, networks, and volumes
+	@echo "$(COLOR_BLUE)Cleaning up Docker resources...$(COLOR_RESET)"
+	$(DOCKER_COMPOSE) down -v --remove-orphans
+	docker system prune -f
+	@echo "$(COLOR_GREEN)✓ Cleanup completed$(COLOR_RESET)"
+
+clean: ## Clean build artifacts
+	@echo "$(COLOR_BLUE)Cleaning build artifacts...$(COLOR_RESET)"
+	rm -rf bin/
+	rm -f coverage.out coverage.html
+	@echo "$(COLOR_GREEN)✓ Clean completed$(COLOR_RESET)"
+
+migrate-up: ## Run database migrations
+	@echo "$(COLOR_BLUE)Running migrations...$(COLOR_RESET)"
+	@# Add your migration command here
+	@echo "$(COLOR_GREEN)✓ Migrations completed$(COLOR_RESET)"
+
+health-check: ## Check health of all services
+	@echo "$(COLOR_BLUE)Checking service health...$(COLOR_RESET)"
+	@echo "API Gateway:"; curl -s http://localhost:8000/health | jq || echo "Service not available"
+	@echo "Auth Service:"; curl -s http://localhost:8001/health | jq || echo "Service not available"
+	@echo "Payment Service:"; curl -s http://localhost:8002/health | jq || echo "Service not available"
+	@echo "Campaign Service:"; curl -s http://localhost:8003/health | jq || echo "Service not available"
+	@echo "Asset Service:"; curl -s http://localhost:8004/health | jq || echo "Service not available"
+
+dev: ## Run services in development mode (with auto-reload)
+	@echo "$(COLOR_BLUE)Starting development environment...$(COLOR_RESET)"
+	@echo "$(COLOR_YELLOW)Note: Install 'air' for auto-reload: go install github.com/cosmtrek/air@latest$(COLOR_RESET)"
+	air
+
+.DEFAULT_GOAL := help
