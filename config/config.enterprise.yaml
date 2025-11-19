@@ -1,0 +1,116 @@
+# WaqfWise Enterprise Edition Configuration
+# Commercial License - License key required
+
+app:
+  name: "WaqfWise Enterprise Edition"
+  version: "1.0.0"
+  environment: "production"
+  port: 8080
+
+# License configuration (required for Enterprise)
+license:
+  key: "${WAQFWISE_LICENSE_KEY}"  # Set via environment variable
+  validation_endpoint: "https://license.waqfwise.com/validate"
+  cache_ttl: "1h"
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "waqfwise_enterprise"
+  user: "postgres"
+  password: "postgres"
+  ssl_mode: "require"
+  max_open_conns: 100
+  max_idle_conns: 20
+  conn_max_lifetime: "5m"
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 50
+  cluster_mode: false
+
+auth:
+  jwt_secret: "change-this-secret-in-production"
+  jwt_expiration: "24h"
+  refresh_token_expiration: "168h"
+  bcrypt_cost: 12
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+
+cors:
+  allowed_origins:
+    - "https://app.waqfwise.com"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "PATCH"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+    - "X-Tenant-ID"
+
+# Multi-tenancy configuration
+multitenancy:
+  enabled: true
+  tenant_isolation: "database"  # Options: database, schema, row
+  default_tenant: "default"
+
+# Advanced analytics configuration
+analytics:
+  enabled: true
+  data_retention_days: 365
+  real_time_processing: true
+
+# White-labeling configuration
+whitelabel:
+  enabled: true
+  custom_branding: true
+  custom_domain: true
+
+# Integration configuration
+integrations:
+  enabled: true
+  sap_enabled: false
+  api_rate_limit: 1000
+
+# Advanced payment configuration
+advanced_payment:
+  enabled: true
+  fraud_detection: true
+  payment_aggregation: true
+  supported_gateways:
+    - "stripe"
+    - "midtrans"
+    - "xendit"
+
+# Geospatial configuration
+geospatial:
+  enabled: true
+  mapping_provider: "mapbox"
+  asset_tracking: true
+
+features:
+  # All community features
+  authentication: true
+  campaign_management: true
+  basic_payment: true
+  donor_management: true
+  nazir_management: true
+  basic_reporting: true
+
+  # Enterprise features
+  multitenancy: true
+  advanced_analytics: true
+  whitelabel: true
+  integrations: true
+  advanced_payment: true
+  geospatial: true

@@ -1,0 +1,59 @@
+# WaqfWise Community Edition Configuration
+# Licensed under AGPL v3
+
+app:
+  name: "WaqfWise Community Edition"
+  version: "1.0.0"
+  environment: "development"
+  port: 8080
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "waqfwise_community"
+  user: "postgres"
+  password: "postgres"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+auth:
+  jwt_secret: "change-this-secret-in-production"
+  jwt_expiration: "24h"
+  refresh_token_expiration: "168h"
+  bcrypt_cost: 12
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+
+cors:
+  allowed_origins:
+    - "http://localhost:3000"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+
+features:
+  # Community features only
+  authentication: true
+  campaign_management: true
+  basic_payment: true
+  donor_management: true
+  nazir_management: true
+  basic_reporting: true
