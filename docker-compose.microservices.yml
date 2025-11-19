@@ -1,0 +1,254 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgis/postgis:15-3.3-alpine
+    container_name: waqfwise-postgres
+    environment:
+      POSTGRES_USER: waqfwise
+      POSTGRES_PASSWORD: waqfwise
+      POSTGRES_DB: waqfwise_community
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - waqfwise-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waqfwise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: waqfwise-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - waqfwise-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # API Gateway - Single Entry Point
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: api-gateway
+    container_name: waqfwise-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      PAYMENT_SERVICE_URL: http://payment-service:8002
+      CAMPAIGN_SERVICE_URL: http://campaign-service:8003
+      ASSET_SERVICE_URL: http://asset-service:8004
+      ANALYTICS_SERVICE_URL: http://analytics-service:8005
+      INTEGRATION_SERVICE_URL: http://integration-service:8006
+    networks:
+      - waqfwise-network
+    depends_on:
+      - auth-service
+      - payment-service
+      - campaign-service
+      - asset-service
+    restart: unless-stopped
+
+  # Auth Service - Port 8001
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: auth-service
+    container_name: waqfwise-auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_community?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-this-in-production}
+      REDIS_URL: redis:6379
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Payment Service - Port 8002
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: payment-service
+    container_name: waqfwise-payment-service
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: 8002
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_community?sslmode=disable
+      REDIS_URL: redis:6379
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY}
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY}
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Campaign Service - Port 8003
+  campaign-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: campaign-service
+    container_name: waqfwise-campaign-service
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: 8003
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_community?sslmode=disable
+      REDIS_URL: redis:6379
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Asset Service - Port 8004
+  asset-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: asset-service
+    container_name: waqfwise-asset-service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_community?sslmode=disable
+      REDIS_URL: redis:6379
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Analytics Service - Port 8005 (Enterprise Only)
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: analytics-service
+    container_name: waqfwise-analytics-service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: 8005
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_enterprise?sslmode=disable
+      REDIS_URL: redis:6379
+      EDITION: enterprise
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - enterprise
+
+  # Integration Service - Port 8006 (Enterprise Only)
+  integration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.microservices
+      args:
+        SERVICE_NAME: integration-service
+    container_name: waqfwise-integration-service
+    ports:
+      - "8006:8006"
+    environment:
+      PORT: 8006
+      DATABASE_URL: postgres://waqfwise:waqfwise@postgres:5432/waqfwise_enterprise?sslmode=disable
+      REDIS_URL: redis:6379
+      EDITION: enterprise
+    networks:
+      - waqfwise-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - enterprise
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: waqfwise-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - waqfwise-network
+    restart: unless-stopped
+
+  # Monitoring - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: waqfwise-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - waqfwise-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  waqfwise-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
