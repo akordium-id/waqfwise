@@ -3,9 +3,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/akordium-id/waqfwise/pkg/config"
+	"github.com/akordium-id/waqfwise/pkg/server"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -18,23 +26,52 @@ func main() {
 	fmt.Println("Licensed under AGPL v3")
 	fmt.Println()
 
-	// TODO: Initialize configuration
-	// TODO: Initialize database connection
-	// TODO: Initialize Redis connection
-	// TODO: Initialize HTTP server
-	// TODO: Register community routes
-
-	log.Println("Starting WaqfWise Community Edition...")
-
-	// Placeholder for actual server startup
-	if err := run(); err != nil {
-		log.Fatalf("Application failed: %v", err)
-		os.Exit(1)
+	// Load environment variables
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
 	}
-}
 
-func run() error {
-	// TODO: Implement server initialization and startup logic
-	log.Println("Server initialization not yet implemented")
-	return nil
+	// Load configuration
+	configPath := os.Getenv("CONFIG_PATH")
+	if configPath == "" {
+		configPath = "config/config.community.yaml"
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Override with environment variables
+	cfg.App.Name = appName
+	cfg.App.Version = appVersion
+
+	// Create server
+	srv, err := server.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create server: %v", err)
+	}
+
+	// Start server in a goroutine
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	// Graceful shutdown
+	log.Println("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited")
 }

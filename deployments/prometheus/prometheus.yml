@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'waqfwise-monitor'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'waqfwise-community'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          service: 'waqfwise-community'
+          edition: 'community'
+
+  - job_name: 'waqfwise-enterprise'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          service: 'waqfwise-enterprise'
+          edition: 'enterprise'
