@@ -30,17 +30,17 @@ func New(svc *service.Service) *Handler {
 func (h *Handler) WidgetPage(c *gin.Context) {
 	mosqueID := c.Query("mosque_id")
 	if mosqueID == "" {
-		c.String(http.StatusBadRequest, "mosque_id required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mosque_id required"})
 		return
 	}
 
 	mosque, _, err := h.svc.GetMosqueConfig(c.Request.Context(), mosqueID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.String(http.StatusNotFound, "Mosque not found")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Mosque not found"})
 			return
 		}
-		c.String(http.StatusInternalServerError, "Internal error")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal error"})
 		return
 	}
 
@@ -50,16 +50,16 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 		if referer != "" {
 			refURL, err := url.Parse(referer)
 			if err != nil {
-				c.String(http.StatusForbidden, "Invalid referrer")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
 				return
 			}
-			domainURL, err := url.Parse(mosque.Domain)
+			domainURL, err := url.Parse(normalizeDomain(mosque.Domain))
 			if err != nil {
-				c.String(http.StatusForbidden, "Invalid referrer")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
 				return
 			}
 			if refURL.Host != domainURL.Host {
-				c.String(http.StatusForbidden, "Invalid referrer")
+				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
 				return
 			}
 		}
@@ -70,8 +70,9 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 	if primaryColor == "" {
 		primaryColor = strings.TrimPrefix(mosque.PrimaryColor, "#")
 	}
+	primaryColor = strings.TrimPrefix(primaryColor, "#")
 	if !validHexColor(primaryColor) {
-		c.String(http.StatusBadRequest, "Invalid primary_color")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid primary_color"})
 		return
 	}
 
@@ -85,7 +86,7 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 		theme = "light"
 	}
 	if theme != "light" && theme != "dark" {
-		c.String(http.StatusBadRequest, "Invalid theme")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid theme"})
 		return
 	}
 
@@ -94,7 +95,7 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 		limit = "6"
 	}
 	if _, err := strconv.Atoi(limit); err != nil {
-		c.String(http.StatusBadRequest, "Invalid limit")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit"})
 		return
 	}
 
@@ -102,6 +103,15 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 
 	html := renderWidgetHTML(mosque.Name, primaryColor, logoURL, theme, mosqueID, limit, types)
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+}
+
+// normalizeDomain prepends https:// when the domain has no scheme so url.Parse
+// returns a non-empty Host for bare hosts like "masjid.example.id".
+func normalizeDomain(domain string) string {
+	if !strings.HasPrefix(domain, "http://") && !strings.HasPrefix(domain, "https://") {
+		return "https://" + domain
+	}
+	return domain
 }
 
 // validHexColor reports whether s is a 6-digit hex color (with or without leading #).
