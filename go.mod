@@ -1,3 +1,5 @@
+// Note: Go directive bumped to 1.25.0 (from plan's 1.21) due to
+// gorm.io/driver/postgres v1.6.3 and pgx/v5 v5.10.0 requiring go 1.25.0
 module github.com/akordium-id/waqfwise
 
 go 1.25.0

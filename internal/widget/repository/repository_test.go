@@ -37,6 +37,7 @@ func TestGetMosqueBySlug_Found(t *testing.T) {
 		AddRow("550e8400-e29b-41d4-a716-446655440000", "Masjid Al-Ikhlas", "masjid-al-ikhlas", "#1B5E20", true)
 
 	mock.ExpectQuery(`SELECT .* FROM "mosques" WHERE slug = \$1 AND is_active = \$2`).
+		WithArgs("masjid-al-ikhlas", true, sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
 	repo := New(gormDB)
@@ -53,7 +54,8 @@ func TestGetMosqueBySlug_NotFound(t *testing.T) {
 	gormDB, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	mock.ExpectQuery(`SELECT .* FROM "mosques"`).
+	mock.ExpectQuery(`SELECT .* FROM "mosques" WHERE slug = \$1 AND is_active = \$2`).
+		WithArgs("nonexistent", true, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	repo := New(gormDB)
@@ -67,7 +69,8 @@ func TestGetCampaignsForWidget_FiltersActiveOnly(t *testing.T) {
 	gormDB, mock, cleanup := setupMockDB(t)
 	defer cleanup()
 
-	mock.ExpectQuery(`SELECT count\(\*\) FROM "campaigns"`).
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "campaigns" WHERE status = \$1 AND deleted_at IS NULL`).
+		WithArgs("active").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(2))
 
 	rows := sqlmock.NewRows([]string{"id", "title", "status", "deleted_at"}).
@@ -75,6 +78,7 @@ func TestGetCampaignsForWidget_FiltersActiveOnly(t *testing.T) {
 		AddRow(int64(2), "Campaign 2", "active", nil)
 
 	mock.ExpectQuery(`SELECT .* FROM "campaigns" WHERE status = \$1 AND deleted_at IS NULL`).
+		WithArgs("active", sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
 	repo := New(gormDB)
