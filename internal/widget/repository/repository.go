@@ -52,6 +52,7 @@ func (r *Repository) GetCampaignsForWidget(ctx context.Context, params CampaignQ
 		Model(&domain.Campaign{}).
 		Where("status = ? AND deleted_at IS NULL", "active")
 
+	// Empty AllowedTypes means no restriction — mosque hasn't configured specific types, show all
 	if len(params.AllowedTypes) > 0 {
 		query = query.Where("type IN ?", params.AllowedTypes)
 	}

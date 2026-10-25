@@ -36,14 +36,11 @@ test.describe("WaqfWise Widget", () => {
     expect(bgColor.trim()).toBe("#FF0000");
   });
 
-  test("empty state shows when no campaigns", async ({ page }) => {
-    await page.goto(
+  test("unknown mosque returns error", async ({ page }) => {
+    const response = await page.goto(
       "http://localhost:8085/widget?mosque_id=nonexistent-mosque",
     );
-    // Should show error or empty state
-    const visible = await page.waitForSelector(".waqf-error, .waqf-empty", {
-      timeout: 5000,
-    });
-    expect(visible).toBeTruthy();
+    // Handler returns 404 JSON for unknown mosques
+    expect(response.status()).toBe(404);
   });
 });

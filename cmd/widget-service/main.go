@@ -24,6 +24,10 @@ import (
 func main() {
 	cfg := config.LoadWidgetConfig()
 
+	if cfg.DatabaseURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
 	// Connect to database
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
