@@ -1,0 +1,46 @@
+.PHONY: build run test test-coverage docker-build docker-up docker-down docker-logs migrate-up migrate-down health-check
+
+BINARY=bin/widget-service
+
+build:
+	CGO_ENABLED=0 go build -o $(BINARY) ./cmd/widget-service
+
+run: build
+	./$(BINARY)
+
+test:
+	go test ./internal/widget/... -v
+
+test-coverage:
+	go test ./internal/widget/... -v -coverprofile=coverage.out && go tool cover -html=coverage.out -o coverage.html
+
+docker-build:
+	docker build -f Dockerfile.widget -t waqfwise-widget .
+
+docker-up:
+	docker compose -f docker-compose.widget.yml up -d
+
+docker-down:
+	docker compose -f docker-compose.widget.yml down
+
+docker-logs:
+	docker compose -f docker-compose.widget.yml logs -f widget
+
+migrate-up:
+	docker run --rm --network waqfwise_widget_default \
+		-v $(PWD)/migrations/widget:/migrations \
+		migrate/migrate:v4 \
+		-path=/migrations \
+		-database="postgres://waqfwise:waqfwise@postgres:5432/waqfwise_widget?sslmode=disable" \
+		up
+
+migrate-down:
+	docker run --rm --network waqfwise_widget_default \
+		-v $(PWD)/migrations/widget:/migrations \
+		migrate/migrate:v4 \
+		-path=/migrations \
+		-database="postgres://waqfwise:waqfwise@postgres:5432/waqfwise_widget?sslmode=disable" \
+		down
+
+health-check:
+	curl -s http://localhost:8085/health

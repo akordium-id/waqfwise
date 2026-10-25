@@ -1,0 +1,40 @@
+version: "3.8"
+services:
+  widget:
+    build:
+      context: .
+      dockerfile: Dockerfile.widget
+    ports:
+      - "8085:8080"
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgres://waqfwise:waqfwise@postgres:5432/waqfwise_widget?sslmode=disable
+      - LOG_LEVEL=info
+      - WIDGET_BASE_URL=https://waqfwise.id
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=waqfwise_widget
+      - POSTGRES_USER=waqfwise
+      - POSTGRES_PASSWORD=waqfwise
+    volumes:
+      - widget_postgres_data:/var/lib/postgresql/data
+      - ./migrations/widget:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waqfwise"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  widget_postgres_data:
