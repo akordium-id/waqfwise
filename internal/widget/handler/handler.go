@@ -47,21 +47,23 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 	// Referrer validation (host comparison, not prefix)
 	if mosque.Domain != "" {
 		referer := c.Request.Referer()
-		if referer != "" {
-			refURL, err := url.Parse(referer)
-			if err != nil {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
-				return
-			}
-			domainURL, err := url.Parse(normalizeDomain(mosque.Domain))
-			if err != nil {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
-				return
-			}
-			if refURL.Host != domainURL.Host {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
-				return
-			}
+		if referer == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Referrer required"})
+			return
+		}
+		refURL, err := url.Parse(referer)
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
+			return
+		}
+		domainURL, err := url.Parse(normalizeDomain(mosque.Domain))
+		if err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
+			return
+		}
+		if refURL.Host != domainURL.Host {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Invalid referrer"})
+			return
 		}
 	}
 
