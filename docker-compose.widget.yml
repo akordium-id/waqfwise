@@ -15,11 +15,6 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
 
   postgres:
     image: postgres:16-alpine
@@ -29,7 +24,7 @@ services:
       - POSTGRES_PASSWORD=waqfwise
     volumes:
       - widget_postgres_data:/var/lib/postgresql/data
-      - ./migrations/widget:/docker-entrypoint-initdb.d
+      - ./migrations/widget/000001_init_widget_schema.up.sql:/docker-entrypoint-initdb.d/000001_init_widget_schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U waqfwise"]
       interval: 10s
