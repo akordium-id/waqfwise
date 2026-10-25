@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
+	"html"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -40,12 +44,24 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 		return
 	}
 
-	// Referrer validation
+	// Referrer validation (host comparison, not prefix)
 	if mosque.Domain != "" {
 		referer := c.Request.Referer()
-		if referer != "" && !strings.HasPrefix(referer, mosque.Domain) {
-			c.String(http.StatusForbidden, "Invalid referrer")
-			return
+		if referer != "" {
+			refURL, err := url.Parse(referer)
+			if err != nil {
+				c.String(http.StatusForbidden, "Invalid referrer")
+				return
+			}
+			domainURL, err := url.Parse(mosque.Domain)
+			if err != nil {
+				c.String(http.StatusForbidden, "Invalid referrer")
+				return
+			}
+			if refURL.Host != domainURL.Host {
+				c.String(http.StatusForbidden, "Invalid referrer")
+				return
+			}
 		}
 	}
 
@@ -54,23 +70,96 @@ func (h *Handler) WidgetPage(c *gin.Context) {
 	if primaryColor == "" {
 		primaryColor = strings.TrimPrefix(mosque.PrimaryColor, "#")
 	}
+	if !validHexColor(primaryColor) {
+		c.String(http.StatusBadRequest, "Invalid primary_color")
+		return
+	}
+
 	logoURL := c.Query("logo_url")
 	if logoURL == "" {
 		logoURL = mosque.LogoURL
 	}
+
 	theme := c.Query("theme")
 	if theme == "" {
 		theme = "light"
+	}
+	if theme != "light" && theme != "dark" {
+		c.String(http.StatusBadRequest, "Invalid theme")
+		return
 	}
 
 	limit := c.Query("limit")
 	if limit == "" {
 		limit = "6"
 	}
+	if _, err := strconv.Atoi(limit); err != nil {
+		c.String(http.StatusBadRequest, "Invalid limit")
+		return
+	}
+
 	types := c.Query("types")
 
 	html := renderWidgetHTML(mosque.Name, primaryColor, logoURL, theme, mosqueID, limit, types)
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+}
+
+// validHexColor reports whether s is a 6-digit hex color (with or without leading #).
+func validHexColor(s string) bool {
+	s = strings.TrimPrefix(s, "#")
+	matched, _ := regexp.MatchString(`^[0-9a-fA-F]{6}$`, s)
+	return matched
+}
+
+// renderWidgetHTML builds the widget HTML shell
+func renderWidgetHTML(mosqueName, primaryColor, logoURL, theme, mosqueID, limit, types string) string {
+	safeName := html.EscapeString(mosqueName)
+	safeLogo := html.EscapeString(logoURL)
+
+	type widgetConfig struct {
+		MosqueID     string `json:"mosqueId"`
+		PrimaryColor string `json:"primaryColor"`
+		LogoURL      string `json:"logoUrl"`
+		Limit        int    `json:"limit"`
+		Types        string `json:"types"`
+		Theme        string `json:"theme"`
+		APIBase      string `json:"apiBase"`
+	}
+
+	limitInt, _ := strconv.Atoi(limit)
+	cfg := widgetConfig{
+		MosqueID:     mosqueID,
+		PrimaryColor: "#" + primaryColor,
+		LogoURL:      logoURL,
+		Limit:        limitInt,
+		Types:        types,
+		Theme:        theme,
+		APIBase:      "/api/v1/widget",
+	}
+	jsConfig, _ := json.Marshal(cfg)
+
+	return `<!DOCTYPE html>
+<html lang="id" data-theme="` + html.EscapeString(theme) + `">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>` + safeName + ` - Kampanye Wakaf</title>
+<style>:root{--waqf-primary:#` + html.EscapeString(primaryColor) + `;--waqf-logo:url(` + safeLogo + `)}</style>
+<link rel="stylesheet" href="/widget/styles.css">
+</head>
+<body>
+<div id="widget-root">
+  <div class="waqf-skeleton" id="skeleton"><div class="waqf-skeleton-card"></div><div class="waqf-skeleton-card"></div><div class="waqf-skeleton-card"></div></div>
+  <div class="waqf-error hidden" id="error"><p>Gagal memuat kampanye</p><button onclick="loadCampaigns()">Coba Lagi</button></div>
+  <div class="waqf-empty hidden" id="empty"><p>Belum ada kampanye aktif</p></div>
+  <div class="waqf-grid hidden" id="grid"></div>
+</div>
+<script>
+window.WIDGET_CONFIG = ` + string(jsConfig) + `;
+</script>
+<script src="/widget/app.js"></script>
+</body>
+</html>`
 }
 
 // GetCampaigns returns public campaign data
@@ -143,38 +232,4 @@ func (h *Handler) GetMosqueConfig(c *gin.Context) {
 			"allowed_types": allowedTypes,
 		},
 	})
-}
-
-// renderWidgetHTML builds the widget HTML shell
-func renderWidgetHTML(mosqueName, primaryColor, logoURL, theme, mosqueID, limit, types string) string {
-	return `<!DOCTYPE html>
-<html lang="id" data-theme="` + theme + `">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>` + mosqueName + ` - Kampanye Wakaf</title>
-<style>:root{--waqf-primary:#` + primaryColor + `;--waqf-logo:url(` + logoURL + `)}</style>
-<link rel="stylesheet" href="/widget/styles.css">
-</head>
-<body>
-<div id="widget-root">
-  <div class="waqf-skeleton" id="skeleton"><div class="waqf-skeleton-card"></div><div class="waqf-skeleton-card"></div><div class="waqf-skeleton-card"></div></div>
-  <div class="waqf-error hidden" id="error"><p>Gagal memuat kampanye</p><button onclick="loadCampaigns()">Coba Lagi</button></div>
-  <div class="waqf-empty hidden" id="empty"><p>Belum ada kampanye aktif</p></div>
-  <div class="waqf-grid hidden" id="grid"></div>
-</div>
-<script>
-window.WIDGET_CONFIG = {
-  mosqueId: "` + mosqueID + `",
-  primaryColor: "#` + primaryColor + `",
-  logoUrl: "` + logoURL + `",
-  limit: ` + limit + `,
-  types: "` + types + `",
-  theme: "` + theme + `",
-  apiBase: "/api/v1/widget"
-};
-</script>
-<script src="/widget/app.js"></script>
-</body>
-</html>`
 }
