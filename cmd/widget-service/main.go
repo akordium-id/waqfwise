@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"io/fs"
 	"log"
 	"net/http"
@@ -15,14 +14,12 @@ import (
 	"github.com/akordium-id/waqfwise/internal/widget/handler"
 	"github.com/akordium-id/waqfwise/internal/widget/repository"
 	"github.com/akordium-id/waqfwise/internal/widget/service"
+	"github.com/akordium-id/waqfwise/web"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
-
-//go:embed web/widget
-var widgetFS embed.FS
 
 func main() {
 	cfg := config.LoadWidgetConfig()
@@ -48,7 +45,7 @@ func main() {
 	r.Use(gin.Recovery())
 
 	// Serve static assets
-	subFS, err := fs.Sub(widgetFS, "web/widget")
+	subFS, err := fs.Sub(web.WidgetFS, "widget")
 	if err != nil {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
 	}
